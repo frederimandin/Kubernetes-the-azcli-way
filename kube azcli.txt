@@ -60,3 +60,18 @@ for host in controller0 controller1 controller2; do
 	HOSTIP=$(az vm list-ip-addresses -g $GROUP -n ${host} --query '[].virtualMachine.network.publicIpAddresses[0].ipAddress' -o tsv)
   scp token.csv ${HOSTIP}:~/
 done
+
+for host in worker0 worker1 worker2; do
+	HOSTIP=$(az vm list-ip-addresses -g $GROUP -n ${host} --query '[].virtualMachine.network.publicIpAddresses[0].ipAddress' -o tsv)
+  scp bootstrap.kubeconfig kube-proxy.kubeconfig ${HOSTIP}:~/
+done
+
+for host in controller0 controller1 controller2; do
+	HOSTIP=$(az vm list-ip-addresses -g $GROUP -n ${host} --query '[].virtualMachine.network.publicIpAddresses[0].ipAddress' -o tsv)
+  echo $HOSTIP
+done
+
+
+INTERNAL_IP=$(hostname -I | cut -d' ' -f1)
+ETCD_NAME=controller$(echo $INTERNAL_IP | cut -c 11)
+
