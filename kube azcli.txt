@@ -1,0 +1,46 @@
+
+
+az account set -s 611f20de-ba1e-447e-b343-9734d700da78
+az group create -l westeurope -n testfmnkube
+az network vnet create -n testfmnVnetKube -g testfmnKube
+az network vnet update -g testfmnkube -n testfmnVnetKube --address-prefixes 10.240.0.0/16 10.200.0.0/16
+az network nsg create -n fmnnsgkube -g testfmnkube -l westeurope
+az network vnet subnet create -g testfmnkube --vnet-name testfmnvnetkube -n kubesubnet --address-prefix 10.240.0.0/24 --network-security-group fmnnsgkube
+az network nsg rule create -g testfmnkube --nsg-name fmnnsgkube -n allow-internal --priority 100 --access Allow --source-address-prefix 10.240.0.0/24
+az network nsg rule create -g testfmnkube --nsg-name fmnnsgkube -n allow-internal2 --priority 101 --access Allow --source-address-prefix 10.200.0.0/16
+az network nsg rule create -g testfmnkube --nsg-name fmnnsgkube -n allow-external3 --priority 102 --access Allow --destination-port-range 22
+az network nsg rule create -g testfmnkube --nsg-name fmnnsgkube -n allow-external --priority 103 --access Allow --destination-port-range 3389
+az network nsg rule create -g testfmnkube --nsg-name fmnnsgkube -n allow-external2 --priority 104 --access Allow --destination-port-range 6443
+az network nsg rule create -g testfmnkube --nsg-name fmnnsgkube -n allow-healthz --priority 105 --access Allow --source-address-prefix 130.211.0.0/22 --destination-port-range 8080
+az network nsg rule create -g testfmnkube --nsg-name fmnnsgkube -n allow-healthz2 --priority 106 --access Allow --source-address-prefix 35.191.0.0/16 --destination-port-range 8080
+az network public-ip create -n testfmnkube -l westeurope -g testfmnkube  --allocation-method static
+
+az vm create -n controller0 -g testfmnKube --image UbuntuLTS --vnet-name testfmnVnetKube --subnet kubesubnet --private-ip-address 10.240.0.10 --authentication-type password --admin-username fred --admin-password WQA12zsxcde3 --nsg ""
+az vm create -n controller1 -g testfmnKube --image UbuntuLTS --vnet-name testfmnVnetKube --subnet kubesubnet --private-ip-address 10.240.0.11 --authentication-type password --admin-username fred --admin-password WQA12zsxcde3 --nsg ""
+az vm create -n controller2 -g testfmnKube --image UbuntuLTS --vnet-name testfmnVnetKube --subnet kubesubnet --private-ip-address 10.240.0.12 --authentication-type password --admin-username fred --admin-password WQA12zsxcde3 --nsg ""
+
+echo "#cloud-config" >> cloud-config.txt
+echo "runcmd:" >> cloud-config.txt
+echo "	- [apt-get, update]" >> cloud-config.txt
+echo "	- [apt-get, install, -y, socat]" >> cloud-config.txt
+
+az vm create -n worker0 -g testfmnKube --image UbuntuLTS --vnet-name testfmnVnetKube --subnet kubesubnet --private-ip-address 10.240.0.20 --authentication-type password --admin-username fred --admin-password WQA12zsxcde3 --custom-data cloud-config.txt --nsg ""
+az vm create -n worker1 -g testfmnKube --image UbuntuLTS --vnet-name testfmnVnetKube --subnet kubesubnet --private-ip-address 10.240.0.21 --authentication-type password --admin-username fred --admin-password WQA12zsxcde3 --custom-data cloud-config.txt --nsg ""
+az vm create -n worker2 -g testfmnKube --image UbuntuLTS --vnet-name testfmnVnetKube --subnet kubesubnet --private-ip-address 10.240.0.22 --authentication-type password --admin-username fred --admin-password WQA12zsxcde3 --custom-data cloud-config.txt --nsg ""
+
+
+KUBERNETES_PUBLIC_ADDRESS=$(az network public-ip show -g testfmnkube -n testfmnkube --query "{ address: ipAddress }" -o tsv)
+
+
+for host in worker0 worker1 worker2; do
+	HOSTIP=$(az vm list-ip-addresses -g testfmnkube -n ${host} --query '[].virtualMachine.network.publicIpAddresses[0].ipAddress' -o tsv)
+  scp ca.pem kube-proxy.pem kube-proxy-key.pem ${HOSTIP}:~/
+done
+
+
+for host in controller0 controller1 controller2; do
+	HOSTIP=$(az vm list-ip-addresses -g testfmnkube -n ${host} --query '[].virtualMachine.network.publicIpAddresses[0].ipAddress' -o tsv)
+  scp ca.pem ca-key.pem kubernetes-key.pem kubernetes.pem ${HOSTIP}:~/
+done
+
+
