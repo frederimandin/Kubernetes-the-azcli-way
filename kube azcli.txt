@@ -46,7 +46,7 @@ az network nsg rule create -g $GROUP --nsg-name $NSG_NAME -n allow-external2 --p
 az network nsg rule create -g $GROUP --nsg-name $NSG_NAME -n allow-healthz --priority 105 --access Allow --destination-port-range 8080
 
 # Create the API frontend load balancer, frontend IP, probe and load balancing rule
-az network lb create -g $GROUP -n $LOAD_BALANCER -l westeurope --backend-pool-name $POOL_NAME --public-ip-address $PUBLIC_IP_NAME  --public-ip-address-type Public --vnet-name $VNET_NAME --subnet $SUBNET_NAME
+az network lb create -g $GROUP -n $LOAD_BALANCER -l westeurope --backend-pool-name $POOL_NAME --public-ip-address $PUBLIC_IP_NAME  --public-ip-address-type Public 
 az network lb probe create --lb-name $LOAD_BALANCER -n $PROBE_NAME --port 8080 --protocol http -g $GROUP --path /healthz
 az network lb rule create --backend-port 6443 --frontend-port 6443 --lb-name $LOAD_BALANCER -n $RULE_NAME --protocol tcp -g $GROUP --backend-pool-name $POOL_NAME --probe-name $PROBE_NAME
  
