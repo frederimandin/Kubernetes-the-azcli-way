@@ -24,9 +24,14 @@ az group create -l westeurope -n $GROUP
 #create the availability-set that is need by the load balancer for the API frontend
 az vm availability-set create -n $ASET_NAME -g $GROUP -l westeurope
 
-#create the public IP, and store this IP into the dedicated variable
+#create the public IP for the cluster, and store this IP into the dedicated variable
 az network public-ip create -n $PUBLIC_IP_NAME -l westeurope -g $GROUP  --allocation-method static
 KUBERNETES_PUBLIC_ADDRESS=$(az network public-ip show -g $GROUP -n $PUBLIC_IP_NAME --query "{ address: ipAddress }" -o tsv)
+
+# create the controllers public IPS
+az network public-ip create -n controller0IP -l westeurope -g $GROUP  --allocation-method static
+az network public-ip create -n controller1IP -l westeurope -g $GROUP  --allocation-method static
+az network public-ip create -n controller2IP -l westeurope -g $GROUP  --allocation-method static
 
 #Create the network infrastructure : vnet, subnet and NSG
 az network vnet create -n $VNET_NAME -g $GROUP
@@ -38,18 +43,17 @@ az network nsg rule create -g $GROUP --nsg-name $NSG_NAME -n allow-internal2 --p
 az network nsg rule create -g $GROUP --nsg-name $NSG_NAME -n allow-external3 --priority 102 --access Allow --destination-port-range 22
 az network nsg rule create -g $GROUP --nsg-name $NSG_NAME -n allow-external --priority 103 --access Allow --destination-port-range 3389
 az network nsg rule create -g $GROUP --nsg-name $NSG_NAME -n allow-external2 --priority 104 --access Allow --destination-port-range 6443
-az network nsg rule create -g $GROUP --nsg-name $NSG_NAME -n allow-healthz --priority 105 --access Allow --source-address-prefix 130.211.0.0/22 --destination-port-range 8080
-az network nsg rule create -g $GROUP --nsg-name $NSG_NAME -n allow-healthz2 --priority 106 --access Allow --source-address-prefix 35.191.0.0/16 --destination-port-range 8080
+az network nsg rule create -g $GROUP --nsg-name $NSG_NAME -n allow-healthz --priority 105 --access Allow --destination-port-range 8080
 
-# Create the API frontend load balancer
-az network lb create -g $GROUP -n $LOAD_BALANCER -l westeurope --backend-pool-name $POOL_NAME  --frontend-ip-name $KUBERNETES_PUBLIC_ADDRESS --vnet-name $VNET_NAME --subnet $SUBNET_NAME
+# Create the API frontend load balancer, frontend IP, probe and load balancing rule
+az network lb create -g $GROUP -n $LOAD_BALANCER -l westeurope --backend-pool-name $POOL_NAME --public-ip-address $PUBLIC_IP_NAME  --public-ip-address-type Public --vnet-name $VNET_NAME --subnet $SUBNET_NAME
 az network lb probe create --lb-name $LOAD_BALANCER -n $PROBE_NAME --port 8080 --protocol http -g $GROUP --path /healthz
 az network lb rule create --backend-port 6443 --frontend-port 6443 --lb-name $LOAD_BALANCER -n $RULE_NAME --protocol tcp -g $GROUP --backend-pool-name $POOL_NAME --probe-name $PROBE_NAME
  
 # create the NICs attached to the load balancer pools
-az network nic create -g $GROUP -n controller0VMNic --vnet-name $VNET_NAME --subnet $SUBNET_NAME --lb-name $LOAD_BALANCER --lb-address-pools $POOL_NAME --private-ip-address 10.240.0.10
-az network nic create -g $GROUP -n controller1VMNic --vnet-name $VNET_NAME --subnet $SUBNET_NAME --lb-name $LOAD_BALANCER --lb-address-pools $POOL_NAME --private-ip-address 10.240.0.11
-az network nic create -g $GROUP -n controller2VMNic --vnet-name $VNET_NAME --subnet $SUBNET_NAME --lb-name $LOAD_BALANCER --lb-address-pools $POOL_NAME --private-ip-address 10.240.0.12
+az network nic create -g $GROUP -n controller0VMNic --vnet-name $VNET_NAME --subnet $SUBNET_NAME --lb-name $LOAD_BALANCER --lb-address-pools $POOL_NAME --private-ip-address 10.240.0.10 --public-ip-address controller0IP
+az network nic create -g $GROUP -n controller1VMNic --vnet-name $VNET_NAME --subnet $SUBNET_NAME --lb-name $LOAD_BALANCER --lb-address-pools $POOL_NAME --private-ip-address 10.240.0.11 --public-ip-address controller1IP
+az network nic create -g $GROUP -n controller2VMNic --vnet-name $VNET_NAME --subnet $SUBNET_NAME --lb-name $LOAD_BALANCER --lb-address-pools $POOL_NAME --private-ip-address 10.240.0.12 --public-ip-address controller2IP
 
 #Create the Controller VMs
 az vm create -n controller0 -g $GROUP --image UbuntuLTS --availability-set $ASET_NAME --nics controller0VMNic --authentication-type password --admin-username $SSH_USERNAME --admin-password $SSH_PASSWORD --nsg ""
@@ -97,7 +101,6 @@ for host in worker0 worker1 worker2; do
 	HOSTIP=$(az vm list-ip-addresses -g $GROUP -n ${host} --query '[].virtualMachine.network.publicIpAddresses[0].ipAddress' -o tsv)
   scp bootstrap.kubeconfig kube-proxy.kubeconfig ${HOSTIP}:~/
 done
-
 
 ##needed during build phase of etcd : https://github.com/kelseyhightower/kubernetes-the-hard-way/blob/master/docs/04-etcd.md
 INTERNAL_IP=$(hostname -I | cut -d' ' -f1)
